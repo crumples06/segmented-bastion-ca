@@ -3,8 +3,15 @@ Host bastion
     Port 2222
     User admin
     IdentityFile keys/key
+    CertificateFile keys/key-cert.pub
 
 Host server1 server2
     User admin
     ProxyJump bastion
     IdentityFile keys/key 
+    CertificateFile keys/key-cert.pub
+
+Host *
+    UserKnownHostsFile ca/known_hosts
+    StrictHostKeyChecking yes
+    

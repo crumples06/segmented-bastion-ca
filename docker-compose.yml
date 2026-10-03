@@ -27,16 +27,30 @@ services:
         volumes:
           - server2_host_keys:/etc/ssh/host_keys
 
+    ca:
+        image: smallstep/step-ca
+        container_name: ca
+        networks:
+            - ca
+        ports:
+            - "127.0.0.1:9000:9000"
+        environment:
+            DOCKER_STEPCA_INIT_NAME: "Bastion Lab CA"
+            DOCKER_STEPCA_INIT_DNS_NAMES: "localhost,ca"
+            DOCKER_STEPCA_INIT_SSH: "true"
+        volumes:
+          - ca_data:/home/step
 
 
 networks:
   private:
     internal: true
     name: private
-
   public:
+  ca:
 
 volumes:
   bastion_host_keys:
   server1_host_keys:
   server2_host_keys:
+  ca_data:

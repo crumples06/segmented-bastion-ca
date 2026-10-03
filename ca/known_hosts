@@ -1,0 +1,1 @@
+@cert-authority [localhost]:2222,bastion,server1,server2 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBPkrDyFmjVCpZe8/EeiKWzfXjiqiBB18n99Xc6lWZ54MtNgI87M5KFvqf6sItz5aCyES9GkvZ+Ey8BSJnjnfJ7A=
