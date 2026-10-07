@@ -41,6 +41,19 @@ services:
         volumes:
           - ca_data:/home/step
 
+    control:
+      build:
+        context: ./control
+        dockerfile: dockerfile
+      working_dir: /work 
+      volumes:
+        - ./control:/work
+        - ./ca:/ca:ro
+      container_name: control
+      networks:
+        - public
+        - ca
+
 
 networks:
   private:

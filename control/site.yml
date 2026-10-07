@@ -1,0 +1,86 @@
+---
+- name: Setting up control node
+  hosts: localhost
+  connection: local
+  tasks:
+    - name: Trust the CA's HTTPS API
+      command: 
+        cmd: step ca bootstrap --ca-url https://ca:9000 --fingerprint {{ ca_fingerprint }}
+        creates: "{{ ansible_env.HOME }}/.step/certs/root_ca.crt"
+
+    - name: Check the CA is reachable
+      command: step ca health
+      changed_when: false
+
+    - name: Make sure ~/.ssh exists
+      ansible.builtin.file:
+        path: "{{ ansible_env.HOME }}/.ssh"
+        state: directory
+        mode: "0700"
+
+    - name: Generate key-pair for control
+      community.crypto.openssh_keypair:
+        path: "{{ ansible_env.HOME }}/.ssh/id_ed25519"
+        type: ed25519 
+
+    - name: Issue a fresh 8h certificate 
+      command: 
+        cmd: step ssh certificate --sign --force --provisioner admin --provisioner-password-file /dev/stdin --principal admin --not-after 8h ansible-control {{ ansible_env.HOME }}/.ssh/id_ed25519.pub
+        stdin: "{{ ca_provisioner_password }}"
+        stdin_add_newline: false
+      no_log: true
+
+- name: Issue and renew host certificates
+  hosts: ssh_hosts
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Read the host's current certificate
+      ansible.builtin.command: ssh-keygen -L -f {{ host_cert_path }}
+      register: current
+      failed_when: false
+      changed_when: false
+
+    - name: Decide whether a renewal is due
+      ansible.builtin.set_fact:
+        renew: >-
+          {{ (force_renew | default(false) | bool) or current.rc != 0 or
+             ((current.stdout | regex_findall('Valid: from \S+ to (\S+)') | first
+               | to_datetime('%Y-%m-%dT%H:%M:%S')) - now()).days < 7 }}
+
+    - name: Fetch the host's public key to control
+      ansible.builtin.fetch:
+        src: /etc/ssh/host_keys/ssh_host_ed25519_key.pub
+        dest: "/tmp/hostkeys/{{ inventory_hostname }}.pub"
+        flat: true
+      when: renew | bool
+
+    - name: Sign it with the CA
+      ansible.builtin.command:
+        cmd: >
+          step ssh certificate --sign --host --force
+          --provisioner admin --provisioner-password-file /dev/stdin
+          {% for p in host_principals %}--principal {{ p }} {% endfor %}
+          --not-after 720h
+          {{ inventory_hostname }} /tmp/hostkeys/{{ inventory_hostname }}.pub
+        stdin: "{{ ca_provisioner_password }}"
+        stdin_add_newline: false
+      delegate_to: localhost
+      become: false
+      no_log: true
+      when: renew | bool
+
+    - name: Install the certificate on the host
+      ansible.builtin.copy:
+        src: "/tmp/hostkeys/{{ inventory_hostname }}-cert.pub"
+        dest: "{{ host_cert_path }}"
+        owner: root
+        mode: "0644"
+      when: renew | bool
+      notify: Reload sshd
+
+  handlers:
+    - name: Reload sshd
+      ansible.builtin.service:
+        name: ssh
+        state: reloaded

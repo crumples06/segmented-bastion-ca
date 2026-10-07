@@ -1,0 +1,13 @@
+all:
+  children:
+    ssh_hosts:
+      vars:
+        ansible_user: admin
+        ansible_ssh_common_args: "-F {{ playbook_dir }}/ssh_config_control"
+      hosts:
+        bastion:
+          host_principals: [bastion, localhost]
+        server1:
+          host_principals: [server1]
+        server2:
+          host_principals: [server2]
