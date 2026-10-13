@@ -1,0 +1,4 @@
+services:
+  ca:
+    environment:
+      DOCKER_STEPCA_INIT_PASSWORD: ci-throwaway

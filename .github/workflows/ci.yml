@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE_FILE: docker-compose.yml:docker-compose.ci.yml
+    steps:
+      - name: Checkout 
+        run: actions/checkout@v4
+
+      - name: Start CA
+        run: docker compose up -d ca --wait
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose logs ca
+
+      - name: Copy ssh user public key
+        run: docker compose cp ca:/home/step/certs/ssh_user_ca_key.pub ca/user_ca.pub
+
+      - name: Copy ssh host public key
+        run: docker compose cp ca:/home/step/certs/ssh_host_ca_key.pub ca/host_ca.pub
+
+      - name: Create known hosts
+        run: echo "@cert-authority [localhost]:2222,bastion,server1,server2 $(cat ca/host_ca.pub)" > ca/known_hosts
+
+      - name: Capture CA root fingerprint
+        run: |
+          FP=$(docker compose exec ca -T step certificate fingerprint /home/step/certs/root_ca.crt)
+          echo "CA_FINGERPRINT=$FP" >> "$GITHUB_ENV"
+          
+      - name: Check exported keys
+        run: |
+          test -s ca/user_ca.pub && test -s ca/host_ca.pub
+          ssh-keygen -lf ca/user_ca.pub
+          ssh-keygen -lf ca/host_ca.pub
+          cat ca/known_hosts
