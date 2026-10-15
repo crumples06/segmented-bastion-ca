@@ -40,3 +40,61 @@ jobs:
           ssh-keygen -lf ca/user_ca.pub
           ssh-keygen -lf ca/host_ca.pub
           cat ca/known_hosts
+
+      - name: Write CI group_vars
+        run: |
+          cat > control/group_vars/all/vars.yml <<EOF
+          ca_fingerprint: "${CA_FINGERPRINT}"
+          ca_provisioner_password: "ci-throwaway"
+          host_cert_path: /etc/ssh/host_keys/ssh_host_ed25519_key-cert.pub
+          EOF
+          rm -f control/group_vars/all/vault.yml
+
+      - name: Build rest of the containers
+        run: docker compose up -d server1 server2 bastion control --wait --build
+
+      - name: Wait for sshd on all hosts
+        run: |
+          for h in bastion server1 server2; do
+            for i in $(seq 1 30); do
+              docker compose logs "$h" 2>&1 | grep -q "Server listening" && break
+              sleep 1
+            done
+            docker compose logs "$h" 2>&1 | grep -q "Server listening" || { echo "$h never started"; exit 1; }
+          done
+
+      - name: Write bootstrap ssh config
+        run: |
+          cat > control/ssh_config_bootstrap <<'EOF'
+          Host bastion server1 server2
+            User admin
+            IdentityFile ~/.ssh/id_ed25519
+            CertificateFile ~/.ssh/id_ed25519-cert.pub
+            IdentitiesOnly yes
+            UserKnownHostsFile /ca/known_hosts
+            StrictHostKeyChecking yes
+
+          Host server1 server2
+            ProxyJump bastion
+          EOF
+
+      - name: Run Ansible Playbook (bootstrap)
+        run: |
+          docker compose exec -T control ansible-playbook -i inventory.yml site.yml \
+            -e '{"ansible_ssh_common_args": "-F /work/ssh_config_bootstrap"}'
+
+      - name: Run ansible playbook again (strict, must be idenpotent)
+        run: docker compose exec -T control ansible-playbook -i inventory.yml site.yml
+
+      - name: Issue test user certificate
+        run: |
+          mkdir -p keys
+          ssh-keygen -t ed25519 -N "" -f keys/key
+          docker compose exec -T ca sh -c 'mkdir -p /tmp/t && cat > /tmp/t/pw && chmod 600 /tmp/t/pw'  <<< "ci-throwaway"
+          docker compose cp keys/key.pub ca:/tmp/t/key.pub
+          docker compose exec -T ca step ssh certificate --sign --force --provisioner admin \
+            --provisioner-password-file /tmp/t/pw --principal admin --not-after 1h ci-user /tmp/t/key.pub
+          docker compose cp ca:/tmp/t/key-cert.pub keys/key-cert.pub
+
+      - name: Positive Tests
+        run: bash ci/positive-tests.sh

@@ -2,3 +2,4 @@ keys/key
 ca_data
 ca/tmp
 keys/key-cert.pub
+control/.vault_pass

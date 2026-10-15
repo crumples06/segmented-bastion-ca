@@ -1,4 +1,4 @@
-Host bastion server1 server2
+Host 
     User admin
     IdentityFile ~/.ssh/id_ed25519
     CertificateFile ~/.ssh/id_ed25519-cert.pub
