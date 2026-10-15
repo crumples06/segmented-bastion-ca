@@ -11,7 +11,7 @@ jobs:
       COMPOSE_FILE: docker-compose.yml:docker-compose.ci.yml
     steps:
       - name: Checkout 
-        run: actions/checkout@v4
+        uses: actions/checkout@v4
 
       - name: Start CA
         run: docker compose up -d ca --wait
@@ -31,7 +31,7 @@ jobs:
 
       - name: Capture CA root fingerprint
         run: |
-          FP=$(docker compose exec ca -T step certificate fingerprint /home/step/certs/root_ca.crt)
+          FP=$(docker compose exec -T ca step certificate fingerprint /home/step/certs/root_ca.crt)
           echo "CA_FINGERPRINT=$FP" >> "$GITHUB_ENV"
           
       - name: Check exported keys
