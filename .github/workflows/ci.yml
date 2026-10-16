@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: ["main"]
 
@@ -71,8 +72,8 @@ jobs:
             IdentityFile ~/.ssh/id_ed25519
             CertificateFile ~/.ssh/id_ed25519-cert.pub
             IdentitiesOnly yes
-            UserKnownHostsFile /ca/known_hosts
-            StrictHostKeyChecking yes
+            UserKnownHostsFile /tmp/bootstrap_known_hosts
+            StrictHostKeyChecking accept-new
 
           Host server1 server2
             ProxyJump bastion
@@ -98,3 +99,11 @@ jobs:
 
       - name: Positive Tests
         run: bash ci/positive-tests.sh
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
