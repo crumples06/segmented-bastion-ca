@@ -24,7 +24,7 @@ done
 
 # The client verified each host by its host certificate
 for h in $HOSTS; do
-  out=$(ssh -v -F ssh-config "$h" true 2>&1)
+  out=$(ssh -v -F ssh_config "$h" true 2>&1)
   echo "$out" | grep -q "known and matches the ED25519-CERT host certificate" \
     || fail "$h: host certificate not verified"
   pass "$h verified via host certificate"
