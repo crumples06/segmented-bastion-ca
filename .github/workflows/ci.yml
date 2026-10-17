@@ -17,6 +17,9 @@ jobs:
       - name: Checkout 
         uses: actions/checkout@v4
 
+      - name: Start CA
+        run: docker compose up -d ca --wait
+
       - name: Allow short-lived certs on the CI CA
         run: |
           docker compose cp ca:/home/step/config/ca.json ca.json
@@ -27,9 +30,6 @@ jobs:
           docker compose cp ca.new.json ca:/home/step/config/ca.json
           docker compose restart ca
           rm -f ca.json ca.new.json
-
-      - name: Start CA
-        run: docker compose up -d ca --wait
 
       - name: Copy ssh user public key
         run: docker compose cp ca:/home/step/certs/ssh_user_ca_key.pub ca/user_ca.pub
