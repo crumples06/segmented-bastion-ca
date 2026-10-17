@@ -6,7 +6,7 @@ on:
     branches: ["main"]
 
 env:
-  CI_CA_PASSWORD: p@a$$word
+  CI_CA_PASSWORD: ci-throwaway-pw
 
 jobs:
   test:
@@ -49,7 +49,7 @@ jobs:
         run: |
           cat > control/group_vars/all/vars.yml <<EOF
           ca_fingerprint: "${CA_FINGERPRINT}"
-          ca_provisioner_password: "ci-throwaway"
+          ca_provisioner_password: "${CI_CA_PASSWORD}"
           host_cert_path: /etc/ssh/host_keys/ssh_host_ed25519_key-cert.pub
           EOF
           rm -f control/group_vars/all/vault.yml
@@ -94,7 +94,7 @@ jobs:
         run: |
           mkdir -p keys
           ssh-keygen -t ed25519 -N "" -f keys/key
-          docker compose exec -T ca sh -c 'mkdir -p /tmp/t && cat > /tmp/t/pw && chmod 600 /tmp/t/pw'  <<< "ci-throwaway"
+          printf '%s' "${CI_CAPASSWORD}" docker compose exec -T ca sh -c 'mkdir -p /tmp/t && cat > /tmp/t/pw && chmod 600 /tmp/t/pw'
           docker compose cp keys/key.pub ca:/tmp/t/key.pub
           docker compose exec -T ca step ssh certificate --sign --force --provisioner admin \
             --provisioner-password-file /tmp/t/pw --principal admin --not-after 1h ci-user /tmp/t/key.pub
