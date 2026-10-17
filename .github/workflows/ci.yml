@@ -20,10 +20,6 @@ jobs:
       - name: Start CA
         run: docker compose up -d ca --wait
 
-      - name: Show logs on failure
-        if: failure()
-        run: docker compose logs ca
-
       - name: Copy ssh user public key
         run: docker compose cp ca:/home/step/certs/ssh_user_ca_key.pub ca/user_ca.pub
 
@@ -94,7 +90,7 @@ jobs:
         run: |
           mkdir -p keys
           ssh-keygen -t ed25519 -N "" -f keys/key
-          printf '%s' "${CI_CAPASSWORD}" | docker compose exec -T ca sh -c 'mkdir -p /tmp/t && cat > /tmp/t/pw && chmod 600 /tmp/t/pw'
+          printf '%s' "${CI_CA_PASSWORD}" | docker compose exec -T ca sh -c 'mkdir -p /tmp/t && cat > /tmp/t/pw && chmod 600 /tmp/t/pw'
           docker compose cp keys/key.pub ca:/tmp/t/key.pub
           docker compose exec -T ca step ssh certificate --sign --force --provisioner admin \
             --provisioner-password-file /tmp/t/pw --principal admin --not-after 1h ci-user /tmp/t/key.pub
