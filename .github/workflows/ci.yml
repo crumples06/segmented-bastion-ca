@@ -17,6 +17,17 @@ jobs:
       - name: Checkout 
         uses: actions/checkout@v4
 
+      - name: Allow short-lived certs on the CI CA
+        run: |
+          docker compose cp ca:/home/step/config/ca.json ca.json
+          jq '.authority.provisioners |= map(
+                if .name == "admin"
+                then .claims = ((.claims // {}) + {"minUserSSHCertDuration": "30s"})
+                else . end)' ca.json > ca.new.json
+          docker compose cp ca.new.json ca:/home/step/config/ca.json
+          docker compose restart ca
+          rm -f ca.json ca.new.json
+
       - name: Start CA
         run: docker compose up -d ca --wait
 
