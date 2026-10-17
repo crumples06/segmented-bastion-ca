@@ -75,7 +75,7 @@ expect_denied "password authentication" "$WORK/c_valid" \
 
 # 5. Expired certificate (65 s after issuing, a margin past the 1 m validity)
 mkcfg "$WORK/c_expired" "$WORK/expired" "$WORK/expired-cert.pub"
-# sleep 65
+sleep 65
 expect_denied "expired certificate" "$WORK/c_expired"
 
 # 6. Isolation: server1's container IP must not be reachable from the runner
