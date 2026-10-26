@@ -5,6 +5,7 @@
   tasks:
     - name: Trust the CA's HTTPS API
       command: 
+        # the ca_fingerprint is gotten from the ca container. docker exec ca step certificate fingerprint /home/step/certs/root_ca.crt 
         cmd: step ca bootstrap --ca-url https://ca:9000 --fingerprint {{ ca_fingerprint }}
         creates: "{{ ansible_env.HOME }}/.step/certs/root_ca.crt"
 
@@ -16,6 +17,7 @@
       ansible.builtin.file:
         path: "{{ ansible_env.HOME }}/.ssh"
         state: directory
+        # OpenSSH refuses keys in directories that are too permissive
         mode: "0700"
 
     - name: Generate key-pair for control
@@ -26,6 +28,7 @@
     - name: Issue a fresh 8h certificate 
       command: 
         cmd: step ssh certificate --sign --force --provisioner admin --provisioner-password-file /dev/stdin --principal admin --not-after 8h ansible-control {{ ansible_env.HOME }}/.ssh/id_ed25519.pub
+        # The ca_provisioner_password is gotten from the ca container's logs, docker logs ca 2>&1 | grep -i password
         stdin: "{{ ca_provisioner_password }}"
         stdin_add_newline: false
       no_log: true
@@ -36,6 +39,7 @@
   gather_facts: false
   tasks:
     - name: Read the host's current certificate
+      # The host_cert_path has to match the HostCertificate path from hardening.conf 
       ansible.builtin.command: ssh-keygen -L -f {{ host_cert_path }}
       register: current
       failed_when: false

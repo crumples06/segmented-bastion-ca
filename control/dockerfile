@@ -4,7 +4,7 @@ WORKDIR /work
 
 # Install dependencies and step-cli
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl gpg ca-certificates openssh-server && \
+    apt-get install -y --no-install-recommends curl gpg ca-certificates openssh-client && \
     curl -fsSL https://packages.smallstep.com/keys/apt/repo-signing-key.gpg -o /etc/apt/keyrings/smallstep.asc && \
     echo "Types: deb" > /etc/apt/sources.list.d/smallstep.sources && \
     echo "URIs: https://packages.smallstep.com/stable/debian" >> /etc/apt/sources.list.d/smallstep.sources && \
@@ -16,8 +16,4 @@ RUN apt-get update && \
     pip install ansible && \
     rm -rf /var/lib/apt/lists/*
 
-RUN ssh-keygen -A
-RUN mkdir -p /run/sshd
-
-EXPOSE 22
-CMD ["/usr/sbin/sshd", "-D", "-e"]
+CMD ["sleep", "infinity"]
