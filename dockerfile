@@ -17,7 +17,4 @@ RUN chmod +x /usr/local/bin/host_keygen.sh
 
 COPY hardening.conf /etc/ssh/sshd_config.d/hardening.conf
 
-# Installs a user CA public key, the server trusts any user certificate signed by this CA (as setup in hardening.conf)
-COPY ./ca/user_ca.pub /etc/ssh/user_ca.pub
-
 ENTRYPOINT [ "/usr/local/bin/host_keygen.sh" ]

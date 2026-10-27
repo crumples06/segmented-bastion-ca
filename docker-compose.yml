@@ -9,6 +9,7 @@ services:
         command: 
         container_name: bastion
         volumes:
+            - ./ca/user_ca.pub:/etc/ssh/user_ca.pub:ro
             - bastion_host_keys:/etc/ssh/host_keys
     
     server1:
@@ -17,6 +18,7 @@ services:
             - private
         container_name: server1
         volumes:
+            - ./ca/user_ca.pub:/etc/ssh/user_ca.pub:ro
             - server1_host_keys:/etc/ssh/host_keys
 
     server2:
@@ -25,6 +27,7 @@ services:
             - private
         container_name: server2
         volumes:
+          - ./ca/user_ca.pub:/etc/ssh/user_ca.pub:ro
           - server2_host_keys:/etc/ssh/host_keys
 
     ca:
@@ -36,6 +39,7 @@ services:
             # Only a process on the Docker host can connect to https://localhost:9000 or https://127.0.0.1:9000.
             - "127.0.0.1:9000:9000"
         environment:
+            DOCKER_STEPCA_INIT_PASSWORD: ${CA_PASSWORD:?run scripts/bootstrap.sh first}
             DOCKER_STEPCA_INIT_NAME: "Bastion Lab CA"
             DOCKER_STEPCA_INIT_DNS_NAMES: "localhost,ca"
             DOCKER_STEPCA_INIT_SSH: "true"
@@ -47,6 +51,8 @@ services:
         context: ./control
         dockerfile: dockerfile
       working_dir: /work 
+      environment:
+        ANSIBLE_VAULT_PASSWORD_FILE: /root/.vault_pass
       volumes:
         - ./control:/work
         - ./ca:/ca:ro

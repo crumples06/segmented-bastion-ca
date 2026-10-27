@@ -1,2 +1,3 @@
 # Force LF for all shell scripts
 *.sh text eol=lf
+control/ssh_config_bootstrap

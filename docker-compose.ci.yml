@@ -1,4 +1,0 @@
-services:
-  ca:
-    environment:
-      DOCKER_STEPCA_INIT_PASSWORD: ${CI_CA_PASSWORD:?set CI_CA_PASSWORD}

@@ -11,13 +11,15 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
-    env:
-      COMPOSE_FILE: docker-compose.yml:docker-compose.ci.yml
+
     steps:
       - name: Checkout 
         uses: actions/checkout@v4
 
-      - name: Start CA
+      - name: Write .env
+        run: printf 'CA_PASSWORD=%s\nVAULT_PASSWORD=ci-vault\n' "$CI_CA_PASSWORD" > .env
+
+      - name: Start CA 
         run: docker compose up -d ca --wait
 
       - name: Allow short-lived certs on the CI CA
@@ -31,81 +33,11 @@ jobs:
           docker compose restart ca
           rm -f ca.json ca.new.json
 
-      - name: Copy ssh user public key
-        run: docker compose cp ca:/home/step/certs/ssh_user_ca_key.pub ca/user_ca.pub
-
-      - name: Copy ssh host public key
-        run: docker compose cp ca:/home/step/certs/ssh_host_ca_key.pub ca/host_ca.pub
-
-      - name: Create known hosts
-        run: echo "@cert-authority [localhost]:2222,bastion,server1,server2 $(cat ca/host_ca.pub)" > ca/known_hosts
-
-      - name: Capture CA root fingerprint
-        run: |
-          FP=$(docker compose exec -T ca step certificate fingerprint /home/step/certs/root_ca.crt)
-          echo "CA_FINGERPRINT=$FP" >> "$GITHUB_ENV"
-          
-      - name: Check exported keys
-        run: |
-          test -s ca/user_ca.pub && test -s ca/host_ca.pub
-          ssh-keygen -lf ca/user_ca.pub
-          ssh-keygen -lf ca/host_ca.pub
-          cat ca/known_hosts
-
-      - name: Write CI group_vars
-        run: |
-          cat > control/group_vars/all/vars.yml <<EOF
-          ca_fingerprint: "${CA_FINGERPRINT}"
-          ca_provisioner_password: "${CI_CA_PASSWORD}"
-          host_cert_path: /etc/ssh/host_keys/ssh_host_ed25519_key-cert.pub
-          EOF
-          rm -f control/group_vars/all/vault.yml
-
-      - name: Build rest of the containers
-        run: docker compose up -d server1 server2 bastion control --wait --build
-
-      - name: Wait for sshd on all hosts
-        run: |
-          for h in bastion server1 server2; do
-            for i in $(seq 1 30); do
-              docker compose logs "$h" 2>&1 | grep -q "Server listening" && break
-              sleep 1
-            done
-            docker compose logs "$h" 2>&1 | grep -q "Server listening" || { echo "$h never started"; exit 1; }
-          done
-
-      - name: Write bootstrap ssh config
-        run: |
-          cat > control/ssh_config_bootstrap <<'EOF'
-          Host bastion server1 server2
-            User admin
-            IdentityFile ~/.ssh/id_ed25519
-            CertificateFile ~/.ssh/id_ed25519-cert.pub
-            IdentitiesOnly yes
-            UserKnownHostsFile /tmp/bootstrap_known_hosts
-            StrictHostKeyChecking accept-new
-
-          Host server1 server2
-            ProxyJump bastion
-          EOF
-
-      - name: Run Ansible Playbook (bootstrap)
-        run: |
-          docker compose exec -T control ansible-playbook -i inventory.yml site.yml \
-            -e '{"ansible_ssh_common_args": "-F /work/ssh_config_bootstrap"}'
-
-      - name: Run ansible playbook again (strict, must be idenpotent)
-        run: docker compose exec -T control ansible-playbook -i inventory.yml site.yml
+      - name: Bootstrap lab
+        run: bash scripts/bootstrap.sh
 
       - name: Issue test user certificate
-        run: |
-          mkdir -p keys
-          ssh-keygen -t ed25519 -N "" -f keys/key
-          printf '%s' "${CI_CA_PASSWORD}" | docker compose exec -T ca sh -c 'mkdir -p /tmp/t && cat > /tmp/t/pw && chmod 600 /tmp/t/pw'
-          docker compose cp keys/key.pub ca:/tmp/t/key.pub
-          docker compose exec -T ca step ssh certificate --sign --force --provisioner admin \
-            --provisioner-password-file /tmp/t/pw --principal admin --not-after 1h ci-user /tmp/t/key.pub
-          docker compose cp ca:/tmp/t/key-cert.pub keys/key-cert.pub
+        run: KEY_ID=ci-user bash scripts/login.sh
 
       - name: Positive Tests
         run: bash ci/positive-tests.sh
