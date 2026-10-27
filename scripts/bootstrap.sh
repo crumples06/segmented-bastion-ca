@@ -22,6 +22,7 @@ echo "@cert-authority [localhost]:2222,bastion,server1,server2 $(cat ca/host_ca.
 FP=$(docker compose exec -T ca step certificate fingerprint /home/step/certs/root_ca.crt | tr -d '\r')
 
 # Generate Ansible variables
+mkdir -p control/group_vars/all
 cat > control/group_vars/all/vars.yml <<EOF
 ca_fingerprint: "$FP"
 host_cert_path: /etc/ssh/host_keys/ssh_host_ed25519_key-cert.pub
