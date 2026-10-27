@@ -1,1 +1,1 @@
-@cert-authority [localhost]:2222,bastion,server1,server2 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBPkrDyFmjVCpZe8/EeiKWzfXjiqiBB18n99Xc6lWZ54MtNgI87M5KFvqf6sItz5aCyES9GkvZ+Ey8BSJnjnfJ7A=
+@cert-authority [localhost]:2222,bastion,server1,server2 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBLBFlSc9WQ+StciIbXO7pDmSjd6pCnG4q+Td/8sWgr1J2+rQ2ay5iVzKESH8rvghvY5CUQ5CbHfmJZKahRgj21Y=
