@@ -24,7 +24,7 @@ bash scripts/reset.sh                          # tear everything down and delete
 
 **On Windows (Git Bash):**
 - `.gitattributes` forces LF line endings on `*.sh`. `host_keygen.sh` is the container entrypoint, and CRLF endings make it fail with `bad interpreter`.
-- The scripts set `MSYS_NO_PATHCONV=1`, because Git Bash otherwise rewrites arguments that start with `/` (for example `/home/step/...`) into Windows paths. Do the same for your own `docker exec` commands that take absolute paths.
+- `bootstrap.sh` and `login.sh` set `MSYS_NO_PATHCONV=1`, because Git Bash otherwise rewrites arguments that start with `/` (for example `/home/step/...`) into Windows paths. Do the same for your own `docker exec` commands that take absolute paths.
 
 Nothing lab-specific is committed. The CA's public keys, the Ansible variables, the vault and your keys are all generated on your machine and gitignored, so a fresh clone cannot succeed by accident on someone else's CA.
 
@@ -80,7 +80,7 @@ The CA also has an **X.509 root** that protects its HTTPS API. That is a third, 
 
 | Property | How it's enforced | How it was verified |
 |---|---|---|
-| Network isolation | `private` is `internal: true`; only `bastion` bridges `public` and `private`; `ca` has its own network | Direct `ssh` to server1's container IP **times out** (packets dropped, not rejected); checked on every CI run |
+| Network isolation | `private` is `internal: true`; only `bastion` bridges `public` and `private`; `ca` has its own network | By hand, direct `ssh` to server1's container IP **times out** (packets dropped, not rejected); CI asserts on every run that the direct connection fails |
 | Key-only authentication | `PasswordAuthentication no` in `sshd_config.d/hardening.conf` | Forcing `PubkeyAuthentication=no` from the client returns `Permission denied`, not a password prompt; checked on every CI run |
 | No root login | `PermitRootLogin no` in the same drop-in | `sshd -T` showing the resolved (not just written) config |
 | Unique host identity per container | Host keys deleted at build time, generated at container start via an entrypoint script | `ssh-keygen -lf` fingerprints differ across bastion/server1/server2 |
@@ -134,15 +134,15 @@ docker compose exec control ansible-playbook -i inventory.yml site.yml -e force_
 
 No vault flag is needed: `bootstrap.sh` writes the vault password to `/root/.vault_pass` inside the control container, and `ANSIBLE_VAULT_PASSWORD_FILE` in `docker-compose.yml` points Ansible at it. The password file lives inside the container, not on the bind mount, because Windows bind mounts expose files as executable and Ansible would try to run it as a script. If the control container is recreated the file is gone; rerun `bash scripts/bootstrap.sh` to restore it.
 
-Inside Docker, the control node connects to the bastion on port 22 (not the published 2222). `known_hosts` lists `bastion`, `server1` and `server2`, and the host certificates include those names as principals, so strict checking passes with no extra signing.
+Inside Docker, the control node connects to the bastion on port 22 (not the published 2222). `ca/known_hosts` trusts the host CA for `[localhost]:2222` (the developer's client), `bastion`, `server1` and `server2`, and the host certificates include the matching names as principals, so strict checking passes with no extra signing.
 
 ## Bootstrap and automation scripts
 
 | Script | What it does |
 |---|---|
 | `scripts/bootstrap.sh` | Builds a working lab from nothing: secrets, CA, public keys, Ansible variables, vault, containers, host certificates, and a strict-checked verification run. Safe to rerun |
-| `scripts/login.sh` | Issues a 1-hour user certificate for `keys/key` (generated if missing) and tells you how to load it into ssh-agent. `KEY_ID=<id>` sets the certificate's key ID (default `me`) |
-| `scripts/reset.sh` | `docker compose down -v`, then deletes `.env` and every generated file |
+| `scripts/login.sh` | Issues a 1-hour user certificate for `keys/key` (generated if missing) and tries to load the key into ssh-agent; if no agent is running it prints the commands to start one. `KEY_ID=<id>` sets the certificate's key ID (default `me`) |
+| `scripts/reset.sh` | `docker compose down -v`, then deletes `.env` and the generated files (see "Resetting") |
 
 ### Under the hood: what `bootstrap.sh` does
 
@@ -154,7 +154,7 @@ The order matters, because each stage needs the output of the one before it.
 4. **Generate the Ansible variables:** `vars.yml` (fingerprint, certificate path, and a reference to the vaulted password) and a plaintext `vault.yml` holding the provisioner password.
 5. **Build and start everything else.** Each host generates its own keys into its named volume on first start.
 6. **Encrypt the vault.** The vault password goes into `/root/.vault_pass` inside the control container, then `ansible-vault encrypt` runs on `vault.yml`.
-7. **Bootstrap run, only if needed.** If any host has no certificate yet, strict host checking cannot succeed, so this one run uses a generated `ssh_config_bootstrap` with `StrictHostKeyChecking accept-new` and a scratch known-hosts file. It is passed as a full config so both `ProxyJump` hops see the same settings.
+7. **Bootstrap run, only if needed.** The script loops over `bastion server1 server2` and checks whether each host already has a certificate. If any host has none, strict host checking cannot succeed, so this one run uses a generated `ssh_config_bootstrap` with `StrictHostKeyChecking accept-new` and a scratch known-hosts file. It is passed as a full config so both `ProxyJump` hops see the same settings. On a rerun where every host already has a certificate, this step is skipped.
 8. **Strict run, always.** The normal playbook run with strict checking succeeds only if the hosts now present CA-signed certificates the control node accepts. This is the proof that step 7 worked.
 
 Manual equivalent, if you want to see each piece: the CA is started with `docker compose up -d ca --wait`; the public keys come from `docker compose cp ca:/home/step/certs/ssh_user_ca_key.pub ca/user_ca.pub` (and `ssh_host_ca_key.pub`); the fingerprint is `docker compose exec -T ca step certificate fingerprint /home/step/certs/root_ca.crt`; a human certificate is signed with `step ssh certificate --sign --provisioner admin --principal admin --not-after 1h <key-id> <pubkey>` inside the CA container.
@@ -183,7 +183,7 @@ docker logs server1 2>&1 | grep Accepted | tail -1                     # ...ED25
 
 ### Resetting
 
-`bash scripts/reset.sh` removes the containers, networks and volumes (CA state, host keys, host certificates) and deletes `.env`, `ca/*`, the generated vars and vault, the bootstrap config and `keys/key*`. A new CA means a new fingerprint, password and public keys, so everything is regenerated by the next `bootstrap.sh`.
+`bash scripts/reset.sh` removes the containers, networks and volumes (CA state, host keys, host certificates) and deletes `.env`, `ca/user_ca.pub`, `ca/host_ca.pub`, `ca/known_hosts`, the generated vars and vault, the bootstrap config and `keys/key*`. A new CA means a new fingerprint, password and public keys, so everything is regenerated by the next `bootstrap.sh`.
 
 Compose must parse `docker-compose.yml` for every command, including `down`, and the CA service requires `CA_PASSWORD`. `reset.sh` passes a dummy value for the teardown for that reason. If you run `docker compose down -v` yourself without a `.env`, use `CA_PASSWORD=unused docker compose down -v`.
 
@@ -213,16 +213,16 @@ Because CI runs the same script as a person following the Quick start, the docum
 
 ### Negative tests (`ci/negative-tests.sh`)
 
-Each case is built as its own complete ssh config so both `ProxyJump` hops use the same identity. A case only passes if the login fails **and** the output contains `Permission denied`, so a typo or a timeout cannot make a negative test pass for the wrong reason.
+Each login case is built as its own complete ssh config so both `ProxyJump` hops use the same identity. Cases 1-5 only pass if the login fails **and** the output contains `Permission denied`, so a typo or a timeout cannot make them pass for the wrong reason. The isolation case (6) is different: it passes if the direct connection to server1's container IP fails for any reason, and it does not check that the failure was a timeout.
 
 | Case | Expected result |
 |---|---|
-| Valid key, no certificate | Refused |
-| Certificate signed by a rogue CA (principal `admin`) | Refused |
-| Certificate from the real CA, principal `notadmin` | Refused |
-| Password authentication (public-key auth disabled on the client) | Refused |
-| Expired certificate (issued with a short validity, used after it lapses) | Refused |
-| Direct connection to server1's container IP from the runner | Unreachable (times out) |
+| 1. Valid key, no certificate | Refused (`Permission denied`) |
+| 2. Certificate signed by a rogue CA (principal `admin`) | Refused (`Permission denied`) |
+| 3. Certificate from the real CA, principal `notadmin` | Refused (`Permission denied`) |
+| 4. Password authentication (public-key auth disabled on the client) | Refused (`Permission denied`) |
+| 5. Expired certificate (issued with a short validity, used after it lapses) | Refused (`Permission denied`) |
+| 6. Direct connection to server1's container IP from the runner | Connection fails (a timeout when run by hand) |
 
 ### Running the tests against your own lab
 
@@ -269,7 +269,7 @@ This project deliberately started with the naive version of each piece, then har
 - **Secrets are generated, never typed or committed.** `.env` (gitignored) holds a random CA password and a random vault password. The provisioner password sits in an Ansible-Vault-encrypted `vault.yml`, is passed to `step` over stdin, and every task that touches it has `no_log: true`. `vars.yml` stays readable: it holds the public values (root fingerprint, certificate path) and refers to the vaulted password as `vault_ca_provisioner_password`.
 - **Generated, lab-specific files are not committed.** `ca/`, `keys/`, `vars.yml`, `vault.yml` and the bootstrap SSH config belong to one CA instance, so they are gitignored and rebuilt by `bootstrap.sh`. A fresh clone has nothing stale to remove.
 - **One bootstrap path for humans and CI.** The pipeline runs the same script as the Quick start, so the documented setup is the tested setup. Only the CA password and the minimum certificate duration differ.
-- **Tests verify the mechanism, not just the outcome.** The positive tests read the server's `Accepted ... ED25519-CERT` log line and the client's host-certificate message; the negative tests require `Permission denied` specifically.
+- **Tests verify the mechanism, not just the outcome.** The positive tests read the server's `Accepted ... ED25519-CERT` log line and the client's host-certificate message; the login negative tests require `Permission denied` specifically.
 - **CI is hermetic.** It never reads the lab's CA, keys or vault. Everything it needs is created on the runner and destroyed afterwards.
 
 ## Problems encountered and how they were solved
@@ -286,7 +286,7 @@ This project deliberately started with the naive version of each piece, then har
 | `open server1_host-cert.pub: permission denied` while signing | `docker cp` creates files as root; inside the container `step` runs as an unprivileged user | Sign from a scratch directory created inside the container |
 | Bastion crash-looping after adding the host certificate | Typo in `hardening.conf`: `HostCertificates` instead of the singular `HostCertificate`. sshd refuses to start on an unknown option | Correct the directive; check `docker compose logs` first when a container restarts |
 | Noisy `Could not save your private key in /etc/ssh/host_keys/etc/ssh/...` on every start | A stray `ssh-keygen -A -f /etc/ssh/host_keys` line in the entrypoint | Removed the line; the key-generation loop already does the job |
-| Repeated key passphrase prompts (one per `ProxyJump` hop), and `Could not open a connection to your authentication agent` | The agent was empty, never started in that terminal, or its cache lifetime (matched to the certificate's validity) had expired | `ssh-agent` + `ssh-add keys/key`, once per shell session |
+| Repeated key passphrase prompts (one per `ProxyJump` hop), and `Could not open a connection to your authentication agent` | The agent was empty or never started in that terminal | `ssh-agent` + `ssh-add keys/key`, once per shell session |
 | Git Bash mangled `docker exec ... /etc/...` into `C:/.../Git/etc/...` (and later `root_ca.crt` not found inside `bootstrap.sh`) | MSYS path conversion rewrites arguments that start with `/` | `export MSYS_NO_PATHCONV=1` at the top of the scripts, or the same prefix on a manual command |
 | Play 2 reported `Could not match supplied host pattern: ssh_hosts` | The playbook was run without `-i inventory.yml`, so only the implicit `localhost` existed | Always pass `-i inventory.yml` |
 | `Missing sudo password` on every host | `admin` had no sudo rights, and Ansible needs root to write into `/etc/ssh/host_keys` and reload sshd | Passwordless sudo for `admin` in the image |
@@ -294,9 +294,10 @@ This project deliberately started with the naive version of each piece, then har
 | `docker compose down -v` failed with `required variable CA_PASSWORD is missing a value` | Compose parses the whole file for every command, and the `${CA_PASSWORD:?...}` guard fails when `.env` is absent | `reset.sh` passes a dummy `CA_PASSWORD` for the teardown, then deletes `.env` |
 | `ansible-vault` failed with `Exec format error` on the password file | Windows bind mounts expose files as executable, so Ansible runs the vault password file as a script | Keep the vault password file inside the container (`/root/.vault_pass`) and point `ANSIBLE_VAULT_PASSWORD_FILE` at it |
 | `bootstrap.sh` always took the relaxed `accept-new` path and printed `unknown shorthand flag: 'T' in -T` | A typo (`docker comopse exec`) in the "does this host have a certificate yet?" check. The `|| need_bootstrap=1` after it treated the broken command as "no certificate", so the check always said yes, and the strict rerun still passed, which hid the fault | Fix the typo. Lesson: a check that fails for the wrong reason looks identical to one that fails for the right reason |
+| After fixing the typo, `bootstrap.sh` *still* always took the relaxed path | The loop was `for h in bastion,server1,server2`: the commas made it one iteration over a single bogus service name, so `docker compose exec` failed and `need_bootstrap=1` was set every time. Again the strict rerun passed and hid it | Loop over space-separated names: `for h in bastion server1 server2`. The same lesson applies: a failing check is not the same as a check that found something |
 | CI failed with `control/group_vars/all/vars.yml: No such file or directory` | After untracking the generated vars and vault, the directory was empty and git does not store empty directories, so it vanished from a fresh clone. It existed on the local machine, which is why only CI caught it | `mkdir -p control/group_vars/all` in `bootstrap.sh`, so the script creates what it needs |
 
-A common thread: **verify the mechanism, not just the outcome.** "The login worked" was true in several cases where the certificate wasn't involved, "the task reported `changed`" doesn't prove sshd is serving the new certificate, and "the script finished" was true while one of its checks was silently broken.
+A common thread: **verify the mechanism, not just the outcome.** "The login worked" was true in several cases where the certificate wasn't involved, "the task reported `changed`" doesn't prove sshd is serving the new certificate, and "the script finished" was true while one of its checks was silently broken (twice).
 
 ## Files
 
@@ -323,3 +324,7 @@ A common thread: **verify the mechanism, not just the outcome.** "The login work
 - `keys/key`, `keys/key.pub`, `keys/key-cert.pub`: your private key, its public half, and the CA-signed certificate
 
 **Never commit:** `.env`, the `ca_data` volume contents, the CA provisioner password in plaintext, any vault password file, or any private key.
+
+## License
+
+MIT. See `LICENSE`.
