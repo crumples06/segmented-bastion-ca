@@ -1,9 +1,15 @@
 Host bastion server1 server2
+    # Log in as admin. The user certificate’s principal is also admin, and sshd checks that they match
     User admin
+    # The private key made by play 1 in site.yml
     IdentityFile ~/.ssh/id_ed25519
+    # The 8-hour certificate from play 1
     CertificateFile ~/.ssh/id_ed25519-cert.pub
+    # Offer only the key above, never anything from an ssh-agent or default key paths
     IdentitiesOnly yes
+    # The only source of host trust, bind-mounted read-only from ./ca. It holds the single @cert-authority line
     UserKnownHostsFile /ca/known_hosts
+    # Refuse any host the CA hasn’t vouched for
     StrictHostKeyChecking yes
 
 Host server1 server2
