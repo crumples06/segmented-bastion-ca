@@ -1,9 +1,0 @@
-Host bastion server1 server2
-  User admin
-  IdentityFile ~/.ssh/id_ed25519
-  CertificateFile ~/.ssh/id_ed25519-cert.pub
-  IdentitiesOnly yes
-  UserKnownHostsFile /tmp/bootstrap_known_hosts
-  StrictHostKeyChecking accept-new
-Host server1 server2
-  ProxyJump bastion

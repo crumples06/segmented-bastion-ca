@@ -3,7 +3,7 @@ set -euo pipefail
 
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
-PW="${CI_CA_PASSWORD:?set CI_CA_PASSWORD}"
+PW="${CI_CA_PASSWORD:-$(. ./.env; echo "$CA_PASSWORD")}"
 
 pass() { echo "PASS: $*"; }
 fail() { echo "FAIL: $*"; exit 1; }
