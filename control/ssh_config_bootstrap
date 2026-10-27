@@ -5,6 +5,5 @@ Host bastion server1 server2
   IdentitiesOnly yes
   UserKnownHostsFile /tmp/bootstrap_known_hosts
   StrictHostKeyChecking accept-new
-
 Host server1 server2
   ProxyJump bastion

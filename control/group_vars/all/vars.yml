@@ -1,3 +1,0 @@
-ca_fingerprint: "dc2332af12093257c0bb90f34b439cad0c407467e0379be0a829faf1a4e17e8a"
-host_cert_path: /etc/ssh/host_keys/ssh_host_ed25519_key-cert.pub
-ca_provisioner_password: "{{ vault_ca_provisioner_password }}"

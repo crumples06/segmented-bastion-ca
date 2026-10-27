@@ -3,3 +3,9 @@ ca_data
 ca/tmp
 keys/key-cert.pub
 control/.vault_pass
+.env
+ca/
+keys/
+control/group_vars/all/vars.yml
+control/group_vars/all/vault.yml
+control/ssh_config_bootstrap
