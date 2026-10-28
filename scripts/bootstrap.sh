@@ -40,7 +40,7 @@ docker compose exec -T control ansible-vault encrypt group_vars/all/vault.yml
 
 # Bootstrap run only if some host has no certificate yet
 need_bootstrap=0
-for h in bastion,server1,server2; do
+for h in bastion server1 server2; do
     docker compose exec -T "$h" test -f /etc/ssh/host_keys/ssh_host_ed25519_key-cert.pub || need_bootstrap=1
 done
 if [ "$need_bootstrap" = 1 ]; then

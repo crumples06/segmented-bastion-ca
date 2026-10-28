@@ -6,7 +6,6 @@ services:
             - public
         ports:
             - "2222:22"
-        command: 
         container_name: bastion
         volumes:
             - ./ca/user_ca.pub:/etc/ssh/user_ca.pub:ro

@@ -5,7 +5,6 @@
   tasks:
     - name: Trust the CA's HTTPS API
       command: 
-        # the ca_fingerprint is gotten from the ca container. docker exec ca step certificate fingerprint /home/step/certs/root_ca.crt 
         cmd: step ca bootstrap --ca-url https://ca:9000 --fingerprint {{ ca_fingerprint }}
         creates: "{{ ansible_env.HOME }}/.step/certs/root_ca.crt"
 
